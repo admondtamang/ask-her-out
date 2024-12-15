@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import sgMail from '@sendgrid/mail';
 import type { EmailData } from '@/lib/types';
-import { SENDGRID_API_KEY, FROM_EMAIL } from '@/lib/config';
+import { SENDGRID_API_KEY, FROM_EMAIL ,EMAIL_FROM_NAME} from '@/lib/config';
 
 sgMail.setApiKey(SENDGRID_API_KEY);
 
@@ -13,10 +13,16 @@ export async function POST(request: Request) {
     if (data.email === '') {
       return NextResponse.json({ success: false, message: 'Email is required' });
     }
-    
+
+    // decode the email address from url params
+    const to = decodeURIComponent(data.email);
+
     const msg: sgMail.MailDataRequired = {
-      to: data.email,
-      from: "webpoint.development@gmail.com",
+      to,
+      from: {
+        name: EMAIL_FROM_NAME,
+        email: FROM_EMAIL,
+      },
       subject: data.result === 'yes' ? '💖 They Said Yes!' : 'Proposal Response',
       html: `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
@@ -35,9 +41,8 @@ export async function POST(request: Request) {
     await sgMail.send(msg);
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.log("=============", "error", error);
     
-    console.error('Failed to send email:', error);
+    console.dir(error, { depth: null });
     return NextResponse.json(
       { error: 'Failed to send email' },
       { status: 500 }

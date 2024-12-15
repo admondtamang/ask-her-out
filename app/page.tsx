@@ -49,11 +49,20 @@ export default function Home() {
   }, [email]);
 
   const handleNoClick = () => {
+    if (!email) {
+      setShowDialog(true);
+      return;
+    }
+
     setNoCount((prev) => prev + 1);
     setYesButtonSize((prev) => prev + YES_BUTTON_GROWTH_FACTOR);
   };
 
   const handleYesClick = async () => {
+    if (!email) {
+      setShowDialog(true);
+      return;
+    }
     setYesPressed(true);
     if (email) {
       await sendProposalEmail({
