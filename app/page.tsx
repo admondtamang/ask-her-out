@@ -37,7 +37,7 @@ export default function Home() {
   const gifs: Record<number, string> = {
     0: "https://i.pinimg.com/originals/93/e4/e5/93e4e540f3500751660931d2d9c728e0.gif",
     1: "https://i.pinimg.com/originals/dd/ed/a5/ddeda5a202ed4afe4734a7527d30f93a.gif",
-    2: "https://i.pinimg.com/originals/8d/9a/3e/8d9a3edce3008fa532a5a41d17667f7e.gif",
+    2: "https://i.pinimg.com/originals/1e/93/ea/1e93ea3ef412f08488cbe349e8ae4b99.gif",
     3: "https://i.pinimg.com/originals/8d/9a/3e/8d9a3edce3008fa532a5a41d17667f7e.gif",
   };
 
