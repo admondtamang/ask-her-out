@@ -32,7 +32,8 @@ export async function POST(request: Request) {
           <div style="padding: 20px; background-color: #fff; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
             <p><strong>Original Message:</strong> ${data.message}</p>
             <p><strong>Response:</strong> ${data.result.toUpperCase()}</p>
-            ${Number(data?.noCount) > 0 ? `<p><strong>Number of "No" clicks before saying yes:</strong> ${data.noCount}</p>` : ''}
+
+            ${Number(data?.noClicks) > 0 ? `<p><strong>Number of "No" clicks before saying yes:</strong> ${data.noClicks}</p>` : ''}
           </div>
         </div>
       `,

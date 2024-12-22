@@ -4,8 +4,7 @@ import { CatGif } from "./cat-gif";
 import { HeartIcon } from "./heart-icon";
 
 export function SuccessMessage() {
-  const gifUrl =
-    "https://i.giphy.com/media/v1.Y2lkPTc5MGI3NjExNmpxZnptaDFnb2p5emxpMG9zbHc3dDhqdXJ6MTVwdjEzMHFpamcyNCZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/HJibfnd7xqk5hAMD4v/giphy.gif";
+  const gifUrl = "https://i.imgur.com/6eED710.gif";
   return (
     <div className="text-center space-y-6">
       <CatGif src={gifUrl} />
