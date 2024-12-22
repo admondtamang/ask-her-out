@@ -15,10 +15,13 @@ import {
   YES_BUTTON_GROWTH_FACTOR,
 } from "@/lib/constants";
 import { CatGif } from "@/components/proposal/cat-gif";
+import { copyToClipboard } from "@/utils/copyToClipboard";
+import { useToast } from "@/hooks/use-toast";
 
 export default function Home() {
   const searchParams = useSearchParams();
   const router = useRouter();
+  const { toast } = useToast();
   const [noCount, setNoCount] = useState(0);
   const [yesPressed, setYesPressed] = useState(false);
   const [showDialog, setShowDialog] = useState(false);
@@ -78,6 +81,13 @@ export default function Home() {
     const params = new URLSearchParams(searchParams.toString());
     params.set("email", newEmail);
     router.push(`?${params.toString()}`);
+    copyToClipboard(newEmail);
+    toast({
+      title: "Copied to clipboard",
+      description:
+        "Share this email with your friends and receive their response",
+    });
+
     setShowDialog(false);
   };
 
