@@ -16,6 +16,7 @@ import {
 import { CatGif } from "@/components/proposal/cat-gif";
 import { copyToClipboard } from "@/utils/copyToClipboard";
 import { useToast } from "@/hooks/use-toast";
+import useMediaQuery, { MediaScreen } from "@/hooks/use-media-query";
 
 export default function Home() {
   const searchParams = useSearchParams();
@@ -25,6 +26,7 @@ export default function Home() {
   const [yesPressed, setYesPressed] = useState(false);
   const [showDialog, setShowDialog] = useState(false);
   const [yesButtonSize, setYesButtonSize] = useState(1);
+  const isMobile = useMediaQuery(MediaScreen.MOBILE);
 
   const email = searchParams.get("email") || "";
 
@@ -81,17 +83,25 @@ export default function Home() {
     params.set("email", newEmail);
     router.push(`?${params.toString()}`);
     copyToClipboard(newEmail);
-    toast({
-      title: "Copied to clipboard",
-      description:
-        "Share this email with your friends and receive their response",
-    });
+
+    if (isMobile) {
+      toast({
+        title: "Copy the url to share",
+        description:
+          "Share this url with your friends and receive their response",
+      });
+    } else
+      toast({
+        title: "Copied to clipboard",
+        description:
+          "Share this url with your friends and receive their response",
+      });
 
     setShowDialog(false);
   };
 
   return (
-    <div className="min-h-screen bg-pink-100 flex flex-col items-center justify-center p-4">
+    <div className="min-h-[100dvh] bg-pink-100 flex flex-col items-center justify-center p-4">
       <div className="max-w-4xl w-full bg-white border-4 border-black p-8 rounded-lg shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] space-y-8">
         {!yesPressed ? (
           <>
