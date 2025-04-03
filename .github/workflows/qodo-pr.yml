@@ -38,8 +38,8 @@ jobs:
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           project_language: typescript
-          project_root: templated_tests/typescript/calculator
-          code_coverage_report_path: templated_tests/typescript/calculator/coverage/cobertura-coverage.xml
+          project_root: app
+          code_coverage_report_path: app/coverage/cobertura-coverage.xml
           test_command: "npm run test -- tests/**/*.test.ts"
           model: gpt-4o-2024-11-20
           desired_coverage: ${{ github.event.inputs.desired_coverage }}
