@@ -85,7 +85,7 @@ jobs:
 
           user_msg = {
               "role": "user",
-              "content": f"Please review the following PR diff and generate categorized feedback with file names and line numbers:\n\n{diff}"
+              "content": "Please review the following PR diff and generate categorized feedback with file names and line numbers:\n\n" + diff
           }
 
           response = openai.chat.completions.create(
@@ -117,7 +117,7 @@ jobs:
                       
                       # Create GitHub link to the specific line(s)
                       line_ref = f"L{line_start}" if line_start == line_end else f"L{line_start}-L{line_end}"
-                      file_link = f"[{filename}:{line_start}{f\"-{line_end}\" if line_start != line_end else \"\"}](https://github.com/{repo_owner}/{repo_name}/blob/{pr_head_sha}/{filename}#{line_ref})"
+                      file_link = f"[{filename}:{line_start}{'-' + line_end if line_start != line_end else ''}](https://github.com/{repo_owner}/{repo_name}/blob/{pr_head_sha}/{filename}#{line_ref})"
                       
                       return file_link
                       
