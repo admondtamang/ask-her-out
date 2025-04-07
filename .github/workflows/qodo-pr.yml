@@ -1,95 +1,42 @@
 name: AI Code Review
 permissions:
   contents: read
-  pull-requests: write  # Needed to post comments on PRs
+  pull-requests: write
   
 on:
   pull_request:
-    types: [opened, synchronize, reopened]  # Triggers on PR creation and updates
+    types: [opened, synchronize, reopened]
 jobs:
   ai_code_review:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3  # Consider updating to actions/checkout@v4 for latest features and security patches
+        uses: actions/checkout@v3
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.11'
       - name: Install dependencies
-        run: pip install openai requests  # Consider using requirements.txt or pip freeze for more predictable dependency management
+        run: pip install openai requests
       - name: Get PR diff
         id: pr_diff
         run: |
-          echo "DIFF<<EOF" >> $GITHUB_ENV  # Uses multi-line env var syntax for GitHub Actions
+          echo "DIFF<<EOF" >> $GITHUB_ENV
           gh pr diff ${{ github.event.pull_request.number }} --repo ${{ github.repository }} >> $GITHUB_ENV
           echo "EOF" >> $GITHUB_ENV
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Needed for GitHub CLI access
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Run OpenAI Code Review and Split Comments
         id: code_review
         env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}  # Make sure this secret is set in your repository
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          REPO: ${{ github.repository }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
-          python -c '  # Consider moving this to a separate script file for better maintainability
-          import os, openai, re, json, subprocess, base64
-
+          python -c '
+          import os, openai, re
           openai.api_key = os.getenv("OPENAI_API_KEY")
           diff = os.getenv("DIFF", "")
-          pr_number = os.getenv("PR_NUMBER")
-          repo = os.getenv("REPO")
-          github_token = os.getenv("GITHUB_TOKEN")
-
           if len(diff) > 10000:
-              diff = diff[:10000]  # Truncating may lead to incomplete review for large PRs - consider chunking
-
-          # Parse the diff to extract file paths and line numbers
-          def parse_diff(diff_text):
-              files = []
-              current_file = None
-              line_mapping = {}
-              
-              for line in diff_text.split("\n"):
-                  if line.startswith("diff --git"):
-                      if current_file:
-                          files.append((current_file, line_mapping))
-                          line_mapping = {}
-                      file_path = line.split(" b/")[1]
-                      current_file = file_path
-                  elif line.startswith("@@"):
-                      # Extract line numbers from hunk header
-                      match = re.search(r"@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@", line)
-                      if match:
-                          start_line = int(match.group(1))
-                          line_number = start_line
-                  elif line.startswith("+") and not line.startswith("+++"):
-                      if current_file:
-                          line_mapping[line_number] = line[1:]
-                          line_number += 1
-              
-              if current_file:
-                  files.append((current_file, line_mapping))
-              
-              return files
-          
-          files_info = parse_diff(diff)  # This variable is defined but never used - potential code smell
-
-          # Get PR files using GitHub CLI
-          def get_pr_files():
-              cmd = [
-                  "gh", "api", 
-                  f"repos/{repo}/pulls/{pr_number}/files",
-                  "--header", f"Authorization: token {github_token}",
-                  "--jq", ".[].filename"
-              ]
-              result = subprocess.run(cmd, capture_output=True, text=True)
-              return result.stdout.strip().split("\n")
-              
-          pr_files = get_pr_files()
-
+              diff = diff[:10000]
           system_msg = {
               "role": "system",
               "content": """You are a senior software engineer performing a code review on a pull request.
@@ -98,133 +45,50 @@ jobs:
           - 🛑 Critical: Bugs, security issues, breaking changes.
           - ⚠️ Warning: Code smells, bad practices, performance issues.
           - ℹ️ Information: Style, naming, readability improvements.
-          
-          For each issue, include:
-          1. The exact line number where the issue occurs
-          2. The file path
-          3. A clear description of the issue
-          4. Suggested fix if applicable
-          
-          Format your response as a JSON array with the following structure for each item:
-          {
-              "level": "critical|warning|info",
-              "file_path": "path/to/file",
-              "line_number": 123,
-              "message": "Description of the issue and suggested fix"
+          Output your response in GitHub-flavored Markdown, grouped by risk level, with bullet points under each.
+          If a category has no findings, skip it."""
           }
-          """
-          }
-          
           user_msg = {
               "role": "user",
-              "content": f"Please review the following PR diff and generate feedback in the JSON format specified:\n\n{diff}"
+              "content": f"Please review the following PR diff and generate categorized feedback:\n\n{diff}"
           }
-          
           response = openai.chat.completions.create(
-              model="gpt-4",  # Consider making the model configurable
-              messages=[system_msg, user_msg],
-              response_format={"type": "json_object"}
+              model="gpt-4",
+              messages=[system_msg, user_msg]
           )
+          review = response.choices[0].message.content
+          def extract_section(section_title):
+              pattern = rf"### {re.escape(section_title)}\n(.*?)(?=\n### |\Z)"
+              match = re.search(pattern, review, re.DOTALL)
+              return match.group(1).strip() if match else ""
+          critical = extract_section("🛑 Critical")
+          warning = extract_section("⚠️ Warning")
+          info = extract_section("ℹ️ Information")
           
-          result_text = response.choices[0].message.content
-          
-          # Extract the JSON content
-          json_match = re.search(r"{.*}", result_text.replace("\n", ""), re.DOTALL)
-          if json_match:
-              review_json = json.loads(json_match.group(0))
-              if "issues" in review_json:
-                  review_items = review_json["issues"]
-              else:
-                  # Try to parse the entire response as a list
-                  review_items = json.loads(result_text)
-          else:
-              review_items = []  # No error handling if JSON parsing fails
-          
-          # Categorize issues
-          critical_issues = []
-          warning_issues = []
-          info_issues = []
-          
-          for item in review_items:
-              if "level" in item:
-                  level = item["level"].lower()
-                  if level == "critical":
-                      critical_issues.append(item)
-                  elif level == "warning":
-                      warning_issues.append(item)
-                  elif level == "info" or level == "information":
-                      info_issues.append(item)
-          
-          # Function to post review comments
-          def post_inline_comments(issues):
-              for issue in issues:
-                  file_path = issue.get("file_path", "")
-                  line_number = issue.get("line_number", 1)
-                  message = issue.get("message", "")
-                  
-                  # Skip if file_path is not in the PR
-                  if file_path not in pr_files:
-                      continue
-                  
-                  # Create inline comment using GitHub CLI
-                  cmd = [
-                      "gh", "pr", "comment", pr_number,
-                      "--body", message,
-                      "--file", file_path,
-                      "--line", str(line_number)
-                  ]
-                  subprocess.run(cmd, env={"GITHUB_TOKEN": github_token})  # No error handling for failed command execution
-          
-          # Function to create summary comment
-          def create_summary(issues, level):
-              if not issues:
-                  return ""
-              
-              prefix = ""
-              if level == "critical":
-                  prefix = "### 🛑 Critical Issues\n"
-              elif level == "warning":
-                  prefix = "### ⚠️ Warnings\n"
-              else:
-                  prefix = "### ℹ️ Suggestions\n"
-              
-              summary = prefix
-              for issue in issues:
-                  file_path = issue.get("file_path", "")
-                  line_number = issue.get("line_number", "")
-                  message = issue.get("message", "")
-                  summary += f"- **{file_path}:{line_number}** - {message}\n"
-              
-              return summary
-          
-          # Post inline comments
-          post_inline_comments(critical_issues)
-          post_inline_comments(warning_issues)
-          post_inline_comments(info_issues)
-          
-          # Create summary comments
-          has_critical = len(critical_issues) > 0
-          has_warning = len(warning_issues) > 0
-          has_info = len(info_issues) > 0
-          
-          # Write summary files if content exists
-          if has_critical:
+          # Write files if content exists and set output variables
+          has_critical = "false"
+          if critical:
               with open("critical.txt", "w") as f:
-                  f.write(create_summary(critical_issues, "critical"))
-          
-          if has_warning:
+                  f.write("### 🛑 Critical Issues\n" + critical)
+              has_critical = "true"
+              
+          has_warning = "false"
+          if warning:
               with open("warning.txt", "w") as f:
-                  f.write(create_summary(warning_issues, "warning"))
-          
-          if has_info:
+                  f.write("### ⚠️ Warnings\n" + warning)
+              has_warning = "true"
+              
+          has_info = "false"
+          if info:
               with open("info.txt", "w") as f:
-                  f.write(create_summary(info_issues, "info"))
+                  f.write("### ℹ️ Suggestions\n" + info)
+              has_info = "true"
           
           # Set outputs for next steps
           with open(os.environ["GITHUB_OUTPUT"], "a") as f:
-              f.write(f"has_critical={str(has_critical).lower()}\n")
-              f.write(f"has_warning={str(has_warning).lower()}\n")
-              f.write(f"has_info={str(has_info).lower()}\n")
+              f.write(f"has_critical={has_critical}\n")
+              f.write(f"has_warning={has_warning}\n")
+              f.write(f"has_info={has_info}\n")
           '
       - name: Post Critical Feedback
         if: steps.code_review.outputs.has_critical == 'true'
@@ -232,7 +96,7 @@ jobs:
         with:
           issue-number: ${{ github.event.pull_request.number }}
           body-file: critical.txt
-          reactions: 'eyes'  # Consider a different reaction like 'rocket' for more urgency
+          reactions: 'eyes'
       - name: Post Warnings
         if: steps.code_review.outputs.has_warning == 'true'
         uses: peter-evans/create-or-update-comment@v4
