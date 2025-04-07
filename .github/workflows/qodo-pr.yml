@@ -44,15 +44,24 @@ jobs:
               diff = diff[:10000]  # Truncate if too long for token limits
 
           system_message = {
-              "role": "system",
-              "content": "You are a senior software engineer doing a code review. Provide feedback on code quality, best practices, potential bugs, and suggestions for improvement."
+            "role": "system",
+            "content": """You are a senior software engineer performing a code review on a pull request.
+          
+          Identify issues in the code and assign each issue a risk level:
+          
+          - 🛑 Critical: Bugs, security issues, breaking changes.
+          - ⚠️ Warning: Code smells, bad practices, performance issues.
+          - ℹ️ Information: Style, naming, readability improvements.
+          
+          Output your response in GitHub-flavored Markdown, grouped by risk level, with bullet points under each.
+          
+          If a category has no findings, skip it."""
           }
-
+          
           user_message = {
               "role": "user",
-              "content": f"Here is the diff of the PR. Please review it:\n\n{diff}"
+              "content": f"Please review the following PR diff and generate categorized feedback:\n\n{diff}"
           }
-
           response = openai.chat.completions.create(
               model="gpt-4",
               messages=[system_message, user_message]
@@ -63,9 +72,38 @@ jobs:
           with open("review.txt", "w") as f:
               f.write(review_comment)
           EOF
-
-      - name: Post review comment
-        uses: peter-evans/create-or-update-comment@v3
+      - name: Post Critical Feedback
+        if: steps.review.outputs.has_critical == 'true'
+        uses: peter-evans/create-or-update-comment@v4
         with:
           issue-number: ${{ github.event.pull_request.number }}
-          body-file: review.txt
+          body: |
+            ### 🛑 Critical Issues
+            ${{ steps.review.outputs.critical }}
+          reactions: 'eyes'
+
+      - name: Post Warnings
+        if: steps.review.outputs.has_warning == 'true'
+        uses: peter-evans/create-or-update-comment@v4
+        with:
+          issue-number: ${{ github.event.pull_request.number }}
+          body: |
+            ### ⚠️ Warnings
+            ${{ steps.review.outputs.warning }}
+          reactions: '+1'
+      
+      - name: Post Info
+        if: steps.review.outputs.has_info == 'true'
+        uses: peter-evans/create-or-update-comment@v4
+        with:
+          issue-number: ${{ github.event.pull_request.number }}
+          body: |
+            ### ℹ️ Suggestions
+            ${{ steps.review.outputs.info }}
+          reactions: 'thinking_face'
+
+      # - name: Post review comment
+      #   uses: peter-evans/create-or-update-comment@v3
+      #   with:
+      #     issue-number: ${{ github.event.pull_request.number }}
+      #     body-file: review.txt
