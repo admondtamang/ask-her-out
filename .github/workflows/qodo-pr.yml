@@ -1,50 +1,63 @@
-name: Run the qodo-cover action (Typescript)
+name: AI Code Review
 
 on:
-  workflow_dispatch:
-    inputs:
-      desired_coverage:
-        description: "Desired coverage percentage"
-        required: false
-        default: "70"
-
-permissions:
-  pull-requests: write
-  contents: write
+  pull_request:
+    types: [opened, synchronize, reopened]
 
 jobs:
-  run-qodo-cover-ts:
-    runs-on: ubuntu-22.04
+  ai_code_review:
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
-        with:
-          ref: ${{ github.ref }}
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v3
+      - name: Set up Python
+        uses: actions/setup-python@v4
         with:
-          node-version: '18'
-          cache: 'npm'
-          cache-dependency-path: templated_tests/typescript/calculator
+          python-version: '3.11'
 
       - name: Install dependencies
-        run: |
-          npm install
-        working-directory: templated_tests/typescript/calculator
+        run: pip install openai requests
 
-      - name: Qodo Cover
-        uses: qodo-ai/qodo-ci/.github/actions/qodo-cover@v0.1.15
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          project_language: typescript
-          project_root: app
-          code_coverage_report_path: app/coverage/cobertura-coverage.xml
-          test_command: "npm run test -- tests/**/*.test.ts"
-          model: gpt-4o-2024-11-20
-          desired_coverage: ${{ github.event.inputs.desired_coverage }}
-          test_folder: tests
-          source_folder: src
-          branch: ${{ github.ref_name }}
+      - name: Get PR diff
+        id: diff
+        run: |
+          echo "DIFF<<EOF" >> $GITHUB_ENV
+          gh pr diff ${{ github.event.pull_request.number }} --repo ${{ github.repository }} >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: AI Code Review
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          python <<EOF
+          import os
+          import openai
+
+          openai.api_key = os.getenv("OPENAI_API_KEY")
+          diff = os.getenv("DIFF")
+
+          system_prompt = """You are a senior software engineer reviewing a pull request.
+          Provide clear, constructive comments on code quality, best practices, and potential bugs.
+          Focus on clean code, maintainability, and security."""
+
+          response = openai.ChatCompletion.create(
+              model="gpt-4",
+              messages=[
+                  {"role": "system", "content": system_prompt},
+                  {"role": "user", "content": f"Please review the following PR diff:\n{diff}"}
+              ]
+          )
+
+          review_comment = response['choices'][0]['message']['content']
+          with open("review.txt", "w") as f:
+              f.write(review_comment)
+          EOF
+
+      - name: Post review comment
+        uses: peter-evans/create-or-update-comment@v3
+        with:
+          issue-number: ${{ github.event.pull_request.number }}
+          body-file: review.txt
