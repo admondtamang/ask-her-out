@@ -55,9 +55,10 @@ jobs:
           with open("review.txt", "w") as f:
               f.write(review_comment)
           EOF
-
       - name: Post review comment
-        uses: peter-evans/create-or-update-comment@v3
+        uses: peter-evans/create-or-update-comment@v4
         with:
           issue-number: ${{ github.event.pull_request.number }}
           body-file: review.txt
+          reactions: '+1'
+
