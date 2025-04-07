@@ -21,8 +21,7 @@ jobs:
           python-version: '3.11'
 
       - name: Install dependencies
-        run: |
-          pip install openai requests
+        run: pip install openai requests
 
       - name: Get PR diff
         id: pr_diff
@@ -33,77 +32,85 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Run OpenAI Code Review
+      - name: Run OpenAI Code Review and Split Comments
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
-          python <<EOF
-          import os
-          import openai
+          import os, openai, re
 
           openai.api_key = os.getenv("OPENAI_API_KEY")
           diff = os.getenv("DIFF", "")
-
           if len(diff) > 10000:
-              diff = diff[:10000]  # Truncate if too long for token limits
+              diff = diff[:10000]
 
-          system_message = {
-            "role": "system",
-            "content": """You are a senior software engineer performing a code review on a pull request.
+          system_msg = {
+              "role": "system",
+              "content": """You are a senior software engineer performing a code review on a pull request.
           
           Identify issues in the code and assign each issue a risk level:
-          
+
           - 🛑 Critical: Bugs, security issues, breaking changes.
           - ⚠️ Warning: Code smells, bad practices, performance issues.
           - ℹ️ Information: Style, naming, readability improvements.
-          
+
           Output your response in GitHub-flavored Markdown, grouped by risk level, with bullet points under each.
-          
+
           If a category has no findings, skip it."""
           }
-          
-          user_message = {
+
+          user_msg = {
               "role": "user",
               "content": f"Please review the following PR diff and generate categorized feedback:\n\n{diff}"
           }
+
           response = openai.chat.completions.create(
               model="gpt-4",
-              messages=[system_message, user_message]
+              messages=[system_msg, user_msg]
           )
 
-          review_comment = response.choices[0].message.content
+          review = response.choices[0].message.content
 
-          with open("review.txt", "w") as f:
-              f.write(review_comment)
-          EOF
+          def extract_section(section_title):
+              pattern = rf"### {re.escape(section_title)}\n(.*?)(?=\n### |\Z)"
+              match = re.search(pattern, review, re.DOTALL)
+              return match.group(1).strip() if match else ""
+
+          critical = extract_section("🛑 Critical")
+          warning = extract_section("⚠️ Warning")
+          info = extract_section("ℹ️ Information")
+
+          if critical:
+              with open("critical.txt", "w") as f:
+                  f.write("### 🛑 Critical Issues\n" + critical)
+
+          if warning:
+              with open("warning.txt", "w") as f:
+                  f.write("### ⚠️ Warnings\n" + warning)
+
+          if info:
+              with open("info.txt", "w") as f:
+                  f.write("### ℹ️ Suggestions\n" + info)
 
       - name: Post Critical Feedback
-        if: steps.review.outputs.has_critical == 'true'
+        if: success() && exists('critical.txt') && steps.check_critical.outputs.has_critical == 'true'
         uses: peter-evans/create-or-update-comment@v4
         with:
           issue-number: ${{ github.event.pull_request.number }}
-          body: |
-            ### 🛑 Critical Issues
-            ${{ steps.review.outputs.critical }}
+          body-file: critical.txt
           reactions: 'eyes'
 
       - name: Post Warnings
-        if: steps.review.outputs.has_warning == 'true'
+        if: success() && exists('warning.txt')
         uses: peter-evans/create-or-update-comment@v4
         with:
           issue-number: ${{ github.event.pull_request.number }}
-          body: |
-            ### ⚠️ Warnings
-            ${{ steps.review.outputs.warning }}
+          body-file: warning.txt
           reactions: '+1'
-      
+
       - name: Post Info
-        if: steps.review.outputs.has_info == 'true'
+        if: success() && exists('info.txt')
         uses: peter-evans/create-or-update-comment@v4
         with:
           issue-number: ${{ github.event.pull_request.number }}
-          body: |
-            ### ℹ️ Suggestions
-            ${{ steps.review.outputs.info }}
+          body-file: info.txt
           reactions: 'thinking_face'
-
