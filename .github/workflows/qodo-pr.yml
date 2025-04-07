@@ -2,7 +2,7 @@ name: AI Code Review
 permissions:
   contents: read
   pull-requests: write
-  
+
 on:
   pull_request:
     types: [opened, synchronize, reopened]
@@ -15,7 +15,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: '3.11'
+          python-version: "3.11"
       - name: Install dependencies
         run: pip install openai requests
       - name: Get PR diff
@@ -26,45 +26,118 @@ jobs:
           echo "EOF" >> $GITHUB_ENV
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Get PR files
+        id: pr_files
+        run: |
+          echo "FILES<<EOF" >> $GITHUB_ENV
+          gh pr view ${{ github.event.pull_request.number }} --repo ${{ github.repository }} --json files --jq '.files' >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Run OpenAI Code Review and Split Comments
         id: code_review
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          REPO_OWNER: ${{ github.repository_owner }}
+          REPO_NAME: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           python -c '
-          import os, openai, re
+          import os, openai, re, json
+
           openai.api_key = os.getenv("OPENAI_API_KEY")
           diff = os.getenv("DIFF", "")
+          files_json = os.getenv("FILES", "[]")
+
+          # Parse files information
+          try:
+              files_data = json.loads(files_json)
+          except:
+              files_data = []
+              
+          # Get repository and PR information for creating links
+          repo_owner = os.getenv("REPO_OWNER")
+          repo_name = os.getenv("REPO_NAME")
+          pr_number = os.getenv("PR_NUMBER")
+          pr_head_sha = os.getenv("PR_HEAD_SHA")
+
           if len(diff) > 10000:
               diff = diff[:10000]
+              
           system_msg = {
               "role": "system",
               "content": """You are a senior software engineer performing a code review on a pull request.
-          
+
           Identify issues in the code and assign each issue a risk level:
           - 🛑 Critical: Bugs, security issues, breaking changes.
           - ⚠️ Warning: Code smells, bad practices, performance issues.
           - ℹ️ Information: Style, naming, readability improvements.
+
+          For each issue, please specify:
+          1. The filename
+          2. The line number or range (if applicable)
+          3. A clear description of the issue
+
           Output your response in GitHub-flavored Markdown, grouped by risk level, with bullet points under each.
           If a category has no findings, skip it."""
           }
+
           user_msg = {
               "role": "user",
-              "content": f"Please review the following PR diff and generate categorized feedback:\n\n{diff}"
+              "content": f"Please review the following PR diff and generate categorized feedback with file names and line numbers:\n\n{diff}"
           }
+
           response = openai.chat.completions.create(
               model="gpt-4",
               messages=[system_msg, user_msg]
           )
+
           review = response.choices[0].message.content
+
+          # Function to extract section content
           def extract_section(section_title):
               pattern = rf"### {re.escape(section_title)}\n(.*?)(?=\n### |\Z)"
               match = re.search(pattern, review, re.DOTALL)
               return match.group(1).strip() if match else ""
+              
+          # Function to add GitHub links to file references
+          def add_file_links(content):
+              # Pattern to match file references like "filename.ext:123" or "filename.ext (line 123)"
+              file_patterns = [
+                  r"([a-zA-Z0-9_\-\.\/]+\.[a-zA-Z0-9]+):(\d+)(?:-(\d+))?",  # matches filename.ext:123 or filename.ext:123-456
+                  r"([a-zA-Z0-9_\-\.\/]+\.[a-zA-Z0-9]+) \(lines? (\d+)(?:-(\d+))?\)"  # matches filename.ext (line 123) or (lines 123-456)
+              ]
+              
+              for pattern in file_patterns:
+                  def replace_with_link(match):
+                      filename = match.group(1)
+                      line_start = match.group(2)
+                      line_end = match.group(3) if len(match.groups()) > 2 and match.group(3) else line_start
+                      
+                      # Create GitHub link to the specific line(s)
+                      line_ref = f"L{line_start}" if line_start == line_end else f"L{line_start}-L{line_end}"
+                      file_link = f"[{filename}:{line_start}{f\"-{line_end}\" if line_start != line_end else \"\"}](https://github.com/{repo_owner}/{repo_name}/blob/{pr_head_sha}/{filename}#{line_ref})"
+                      
+                      return file_link
+                      
+                  content = re.sub(pattern, replace_with_link, content)
+              
+              return content
+
+          # Extract and process each section
           critical = extract_section("🛑 Critical")
           warning = extract_section("⚠️ Warning")
           info = extract_section("ℹ️ Information")
-          
+
+          # Add file links to each section
+          if critical:
+              critical = add_file_links(critical)
+          if warning:
+              warning = add_file_links(warning)
+          if info:
+              info = add_file_links(info)
+
           # Write files if content exists and set output variables
           has_critical = "false"
           if critical:
@@ -83,7 +156,7 @@ jobs:
               with open("info.txt", "w") as f:
                   f.write("### ℹ️ Suggestions\n" + info)
               has_info = "true"
-          
+
           # Set outputs for next steps
           with open(os.environ["GITHUB_OUTPUT"], "a") as f:
               f.write(f"has_critical={has_critical}\n")
@@ -96,18 +169,18 @@ jobs:
         with:
           issue-number: ${{ github.event.pull_request.number }}
           body-file: critical.txt
-          reactions: 'eyes'
+          reactions: "eyes"
       - name: Post Warnings
         if: steps.code_review.outputs.has_warning == 'true'
         uses: peter-evans/create-or-update-comment@v4
         with:
           issue-number: ${{ github.event.pull_request.number }}
           body-file: warning.txt
-          reactions: '+1'
+          reactions: "+1"
       - name: Post Info
         if: steps.code_review.outputs.has_info == 'true'
         uses: peter-evans/create-or-update-comment@v4
         with:
           issue-number: ${{ github.event.pull_request.number }}
           body-file: info.txt
-          reactions: 'thinking_face'
+          reactions: "thinking_face"
