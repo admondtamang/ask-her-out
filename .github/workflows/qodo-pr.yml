@@ -1,40 +1,40 @@
 name: AI Code Review
 permissions:
   contents: read
-  pull-requests: write  # Needed to post comments on PRs
+  pull-requests: write
   
 on:
   pull_request:
-    types: [opened, synchronize, reopened]  # Triggers on PR creation and updates
+    types: [opened, synchronize, reopened]
 jobs:
   ai_code_review:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3  # Consider updating to actions/checkout@v4 for latest features and security patches
+        uses: actions/checkout@v3
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.11'
       - name: Install dependencies
-        run: pip install openai requests  # Consider using requirements.txt or pip freeze for more predictable dependency management
+        run: pip install openai requests
       - name: Get PR diff
         id: pr_diff
         run: |
-          echo "DIFF<<EOF" >> $GITHUB_ENV  # Uses multi-line env var syntax for GitHub Actions
+          echo "DIFF<<EOF" >> $GITHUB_ENV
           gh pr diff ${{ github.event.pull_request.number }} --repo ${{ github.repository }} >> $GITHUB_ENV
           echo "EOF" >> $GITHUB_ENV
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Needed for GitHub CLI access
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Run OpenAI Code Review and Split Comments
         id: code_review
         env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}  # Make sure this secret is set in your repository
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           REPO: ${{ github.repository }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          python -c '  # Consider moving this to a separate script file for better maintainability
+          python -c '
           import os, openai, re, json, subprocess, base64
 
           openai.api_key = os.getenv("OPENAI_API_KEY")
@@ -44,7 +44,7 @@ jobs:
           github_token = os.getenv("GITHUB_TOKEN")
 
           if len(diff) > 10000:
-              diff = diff[:10000]  # Truncating may lead to incomplete review for large PRs - consider chunking
+              diff = diff[:10000]
 
           # Parse the diff to extract file paths and line numbers
           def parse_diff(diff_text):
@@ -75,7 +75,7 @@ jobs:
               
               return files
           
-          files_info = parse_diff(diff)  # This variable is defined but never used - potential code smell
+          files_info = parse_diff(diff)
 
           # Get PR files using GitHub CLI
           def get_pr_files():
@@ -121,9 +121,8 @@ jobs:
           }
           
           response = openai.chat.completions.create(
-              model="gpt-4",  # Consider making the model configurable
-              messages=[system_msg, user_msg],
-              response_format={"type": "json_object"}
+              model="gpt-4",
+              messages=[system_msg, user_msg]
           )
           
           result_text = response.choices[0].message.content
@@ -138,7 +137,7 @@ jobs:
                   # Try to parse the entire response as a list
                   review_items = json.loads(result_text)
           else:
-              review_items = []  # No error handling if JSON parsing fails
+              review_items = []
           
           # Categorize issues
           critical_issues = []
@@ -173,7 +172,7 @@ jobs:
                       "--file", file_path,
                       "--line", str(line_number)
                   ]
-                  subprocess.run(cmd, env={"GITHUB_TOKEN": github_token})  # No error handling for failed command execution
+                  subprocess.run(cmd, env={"GITHUB_TOKEN": github_token})
           
           # Function to create summary comment
           def create_summary(issues, level):
@@ -232,7 +231,7 @@ jobs:
         with:
           issue-number: ${{ github.event.pull_request.number }}
           body-file: critical.txt
-          reactions: 'eyes'  # Consider a different reaction like 'rocket' for more urgency
+          reactions: 'eyes'
       - name: Post Warnings
         if: steps.code_review.outputs.has_warning == 'true'
         uses: peter-evans/create-or-update-comment@v4
