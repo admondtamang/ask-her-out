@@ -31,6 +31,7 @@ jobs:
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
+          python -c '
           import os, openai, re
           openai.api_key = os.getenv("OPENAI_API_KEY")
           diff = os.getenv("DIFF", "")
@@ -84,10 +85,11 @@ jobs:
               has_info = "true"
           
           # Set outputs for next steps
-          with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
               f.write(f"has_critical={has_critical}\n")
               f.write(f"has_warning={has_warning}\n")
               f.write(f"has_info={has_info}\n")
+          '
       - name: Post Critical Feedback
         if: steps.code_review.outputs.has_critical == 'true'
         uses: peter-evans/create-or-update-comment@v4
