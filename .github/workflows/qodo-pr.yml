@@ -17,10 +17,11 @@ jobs:
           python-version: '3.11'
 
       - name: Install dependencies
-        run: pip install openai requests
+        run: |
+          pip install openai requests
 
       - name: Get PR diff
-        id: diff
+        id: pr_diff
         run: |
           echo "DIFF<<EOF" >> $GITHUB_ENV
           gh pr diff ${{ github.event.pull_request.number }} --repo ${{ github.repository }} >> $GITHUB_ENV
@@ -28,7 +29,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: AI Code Review
+      - name: Run OpenAI Code Review
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
@@ -37,21 +38,28 @@ jobs:
           import openai
 
           openai.api_key = os.getenv("OPENAI_API_KEY")
-          diff = os.getenv("DIFF")
+          diff = os.getenv("DIFF", "")
 
-          system_prompt = """You are a senior software engineer reviewing a pull request.
-          Provide clear, constructive comments on code quality, best practices, and potential bugs.
-          Focus on clean code, maintainability, and security."""
+          if len(diff) > 10000:
+              diff = diff[:10000]  # Truncate if too long for token limits
 
-          response = openai.ChatCompletion.create(
+          system_message = {
+              "role": "system",
+              "content": "You are a senior software engineer doing a code review. Provide feedback on code quality, best practices, potential bugs, and suggestions for improvement."
+          }
+
+          user_message = {
+              "role": "user",
+              "content": f"Here is the diff of the PR. Please review it:\n\n{diff}"
+          }
+
+          response = openai.chat.completions.create(
               model="gpt-4",
-              messages=[
-                  {"role": "system", "content": system_prompt},
-                  {"role": "user", "content": f"Please review the following PR diff:\n{diff}"}
-              ]
+              messages=[system_message, user_message]
           )
 
-          review_comment = response['choices'][0]['message']['content']
+          review_comment = response.choices[0].message.content
+
           with open("review.txt", "w") as f:
               f.write(review_comment)
           EOF
