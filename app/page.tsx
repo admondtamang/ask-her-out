@@ -44,7 +44,10 @@ export default function Home() {
 
   const email = searchParams.get("email") || "";
 
-  const message = useMemo(() => PROPOSAL_MESSAGES[noCount] || DEFAULT_PROPOSAL_MESSAGE, [noCount]);
+  const message = useMemo(
+    () => PROPOSAL_MESSAGES[noCount] || DEFAULT_PROPOSAL_MESSAGE,
+    [noCount]
+  );
   const gifUrl = useMemo(() => GIFS[noCount] || GIFS[1], [noCount]);
 
   useEffect(() => {
@@ -60,7 +63,12 @@ export default function Home() {
   const handleYesClick = async () => {
     if (!email) return setShowDialog(true);
     setYesPressed(true);
-    await sendProposalEmail({ email, noClicks: noCount, result: "yes", message });
+    await sendProposalEmail({
+      email,
+      noClicks: noCount,
+      result: "yes",
+      message,
+    });
   };
 
   const handleEmailSubmit = (newEmail) => {
@@ -71,10 +79,18 @@ export default function Home() {
 
     toast({
       title: isMobile ? "Copy the url to share" : "Copied to clipboard",
-      description: "Share this url with your friends and receive their response",
+      description:
+        "Share this url with your friends and receive their response",
     });
 
     setShowDialog(false);
+  };
+
+  console.log("helko");
+  useEffect()
+
+  const tryHeloo = () => {
+    return "hello";
   };
 
   return (
@@ -84,7 +100,9 @@ export default function Home() {
           <>
             <div className="text-center space-y-4">
               <CatGif src={gifUrl} />
-              <h1 className="text-4xl md:text-6xl font-bold text-pink-600 mb-8 font-serif">{message}</h1>
+              <h1 className="text-4xl md:text-6xl font-bold text-pink-600 mb-8 font-serif">
+                {message}
+              </h1>
             </div>
             <ProposalButtons
               noCount={noCount}

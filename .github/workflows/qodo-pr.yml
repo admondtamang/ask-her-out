@@ -1,5 +1,9 @@
 name: AI Code Review
 
+permissions:
+  pull-requests: write
+  contents: write
+
 on:
   pull_request:
     types: [opened, synchronize, reopened]
@@ -7,6 +11,7 @@ on:
 jobs:
   ai_code_review:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
@@ -14,13 +19,12 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: '3.11'
+          python-version: "3.11"
 
       - name: Install dependencies
-        run: |
-          pip install openai requests
+        run: pip install openai requests
 
-      - name: Get PR diff
+      - name: Get PR Diff
         id: pr_diff
         run: |
           echo "DIFF<<EOF" >> $GITHUB_ENV
@@ -30,48 +34,15 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Run OpenAI Code Review
+        id: review
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          DIFF: ${{ env.DIFF }}
+          GITHUB_OUTPUT: $GITHUB_OUTPUT # If your script writes outputs
         run: |
-          python <<EOF
-          import os
-          import openai
+          curl -s https://gist.githubusercontent.com/admondtamang/cd9f9e8dab91aad68b31a56a2ed21307/raw/d68a0a6977a55ba5c48664a42528aad86a3a07ae/pr-review.py > pr-review.py
+          python pr-review.py
 
-          openai.api_key = os.getenv("OPENAI_API_KEY")
-          diff = os.getenv("DIFF", "")
-
-          if len(diff) > 10000:
-              diff = diff[:10000]  # Truncate if too long for token limits
-
-          system_message = {
-            "role": "system",
-            "content": """You are a senior software engineer performing a code review on a pull request.
-          
-          Identify issues in the code and assign each issue a risk level:
-          
-          - 🛑 Critical: Bugs, security issues, breaking changes.
-          - ⚠️ Warning: Code smells, bad practices, performance issues.
-          - ℹ️ Information: Style, naming, readability improvements.
-          
-          Output your response in GitHub-flavored Markdown, grouped by risk level, with bullet points under each.
-          
-          If a category has no findings, skip it."""
-          }
-          
-          user_message = {
-              "role": "user",
-              "content": f"Please review the following PR diff and generate categorized feedback:\n\n{diff}"
-          }
-          response = openai.chat.completions.create(
-              model="gpt-4",
-              messages=[system_message, user_message]
-          )
-
-          review_comment = response.choices[0].message.content
-
-          with open("review.txt", "w") as f:
-              f.write(review_comment)
-          EOF
       - name: Post Critical Feedback
         if: steps.review.outputs.has_critical == 'true'
         uses: peter-evans/create-or-update-comment@v4
@@ -80,7 +51,6 @@ jobs:
           body: |
             ### 🛑 Critical Issues
             ${{ steps.review.outputs.critical }}
-          reactions: 'eyes'
 
       - name: Post Warnings
         if: steps.review.outputs.has_warning == 'true'
@@ -90,8 +60,7 @@ jobs:
           body: |
             ### ⚠️ Warnings
             ${{ steps.review.outputs.warning }}
-          reactions: '+1'
-      
+
       - name: Post Info
         if: steps.review.outputs.has_info == 'true'
         uses: peter-evans/create-or-update-comment@v4
@@ -100,10 +69,3 @@ jobs:
           body: |
             ### ℹ️ Suggestions
             ${{ steps.review.outputs.info }}
-          reactions: 'thinking_face'
-
-      # - name: Post review comment
-      #   uses: peter-evans/create-or-update-comment@v3
-      #   with:
-      #     issue-number: ${{ github.event.pull_request.number }}
-      #     body-file: review.txt
