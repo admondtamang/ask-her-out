@@ -38,70 +38,8 @@ jobs:
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
-          import os
-          import openai
-          import re
-
-          openai.api_key = os.getenv("OPENAI_API_KEY")
-          diff = os.getenv("DIFF", "")
-
-          if len(diff) > 10000:
-              diff = diff[:10000]
-
-          system_message = {
-              "role": "system",
-              "content": """You are a senior software engineer performing a code review on a pull request.
-
-          Identify issues in the code and assign each issue a risk level:
-
-          - 🛑 Critical: Bugs, security issues, breaking changes.
-          - ⚠️ Warning: Code smells, bad practices, performance issues.
-          - ℹ️ Information: Style, naming, readability improvements.
-
-          Output your response in GitHub-flavored Markdown, grouped by risk level, with bullet points under each.
-
-          If a category has no findings, skip it."""
-          }
-
-          user_message = {
-              "role": "user",
-              "content": f"Please review the following PR diff and generate categorized feedback:\n\n{diff}"
-          }
-
-          response = openai.chat.completions.create(
-              model="gpt-4",
-              messages=[system_message, user_message]
-          )
-
-          review = response.choices[0].message.content
-
-          # Parse categories
-          critical, warning, info = "", "", ""
-
-          critical_match = re.search(r"### 🛑 Critical Issues\n((?:- .+\n?)+)", review)
-          warning_match = re.search(r"### ⚠️ Warnings\n((?:- .+\n?)+)", review)
-          info_match = re.search(r"### ℹ️ Suggestions\n((?:- .+\n?)+)", review)
-
-          if critical_match:
-              critical = critical_match.group(1).strip()
-              print("::set-output name=has_critical::true")
-              print(f"::set-output name=critical::{critical}")
-          else:
-              print("::set-output name=has_critical::false")
-
-          if warning_match:
-              warning = warning_match.group(1).strip()
-              print("::set-output name=has_warning::true")
-              print(f"::set-output name=warning::{warning}")
-          else:
-              print("::set-output name=has_warning::false")
-
-          if info_match:
-              info = info_match.group(1).strip()
-              print("::set-output name=has_info::true")
-              print(f"::set-output name=info::{info}")
-          else:
-              print("::set-output name=has_info::false")
+          curl -s https://gist.githubusercontent.com/admondtamang/cd9f9e8dab91aad68b31a56a2ed21307/raw/d68a0a6977a55ba5c48664a42528aad86a3a07ae/pr-review.py > pr-review.py
+          python pr-review.py
         shell: python
 
       - name: Post Critical Feedback
