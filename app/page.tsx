@@ -87,6 +87,7 @@ export default function Home() {
   };
 
   console.log("helko");
+  useEffect()
 
   const tryHeloo = () => {
     return "hello";
