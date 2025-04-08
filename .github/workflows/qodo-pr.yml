@@ -1,5 +1,9 @@
 name: AI Code Review
 
+permissions:
+  pull-requests: write
+  contents: write
+
 on:
   pull_request:
     types: [opened, synchronize, reopened]
