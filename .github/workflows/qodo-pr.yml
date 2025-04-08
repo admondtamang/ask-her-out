@@ -37,10 +37,11 @@ jobs:
         id: review
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          DIFF: ${{ env.DIFF }}
+          GITHUB_OUTPUT: $GITHUB_OUTPUT # If your script writes outputs
         run: |
           curl -s https://gist.githubusercontent.com/admondtamang/cd9f9e8dab91aad68b31a56a2ed21307/raw/d68a0a6977a55ba5c48664a42528aad86a3a07ae/pr-review.py > pr-review.py
           python pr-review.py
-        shell: python
 
       - name: Post Critical Feedback
         if: steps.review.outputs.has_critical == 'true'
